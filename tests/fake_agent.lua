@@ -60,7 +60,23 @@ local function on_prompt(msg)
       method = "session/request_permission",
       params = {
         sessionId = sid,
-        toolCall = { toolCallId = "t-perm", title = "Write file", kind = "edit", status = "pending" },
+        toolCall = {
+          toolCallId = "t-perm",
+          title = "Write file",
+          name = "fs_write",
+          kind = "edit",
+          status = "pending",
+          locations = { { path = "/tmp/hello.txt", line = 1 } },
+          rawInput = { command = "write /tmp/hello.txt" },
+          content = {
+            {
+              type = "diff",
+              path = "/tmp/hello.txt",
+              oldText = "old line",
+              newText = "new line",
+            },
+          },
+        },
         options = {
           { optionId = "allow", name = "Allow once", kind = "allow_once" },
           { optionId = "reject", name = "Reject", kind = "reject_once" },

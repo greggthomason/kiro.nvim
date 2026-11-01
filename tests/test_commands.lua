@@ -112,6 +112,29 @@ T["KiroSelection with an empty selection does nothing"] = function()
   eq(child.lua_get("#require('kiro').session().transcript"), 0)
 end
 
+T["the winbar shows an animated spinner while thinking"] = function()
+  child.cmd("Kiro")
+  child.cmd("KiroAsk slow")
+  wait_for("require('kiro').session().state == 'prompting'")
+  local function winbar()
+    return child.lua_get("vim.wo[require('kiro').panel().twin].winbar")
+  end
+  -- A spinner glyph is present while prompting.
+  local bar = winbar()
+  eq(bar:find("thinking", 1, true) ~= nil, true)
+  eq(bar:find("[|/%-\\]") ~= nil, true)
+  -- The frame advances on its timer.
+  wait_for(([[(function()
+    return vim.wo[require('kiro').panel().twin].winbar ~= %q
+  end)()]]):format(bar))
+  child.cmd("KiroCancel")
+  wait_for("not require('kiro').session().busy")
+  -- Idle winbar has no spinner glyph.
+  local idle_bar = winbar()
+  eq(idle_bar:find("ready", 1, true) ~= nil, true)
+  eq(idle_bar:find("[|/\\]") == nil, true)
+end
+
 T["KiroRestart starts over with a fresh session"] = function()
   child.cmd("KiroAsk one")
   idle()
@@ -120,6 +143,29 @@ T["KiroRestart starts over with a fresh session"] = function()
   child.cmd("KiroAsk two")
   wait_for("not require('kiro').session().busy and require('kiro').session().state == 'ready'")
   eq(transcript_text():find("Echo: two", 1, true) ~= nil, true)
+end
+
+T["Kiro with a session id resumes that session via session/load"] = function()
+  child.cmd("Kiro resume-123")
+  eq(child.lua_get("require('kiro').session().session_id"), "resume-123")
+  -- The next prompt connects with session/load, so replayed history appears.
+  child.cmd("KiroAsk hello")
+  wait_for("not require('kiro').session().busy and require('kiro').session().state == 'ready'")
+  eq(child.lua_get("require('kiro').session().session_id"), "resume-123")
+  local text = transcript_text()
+  eq(text:find("old answer", 1, true) ~= nil, true)
+  eq(text:find("Echo: hello", 1, true) ~= nil, true)
+end
+
+T["KiroRestart with a session id resumes that session"] = function()
+  child.cmd("KiroAsk one")
+  idle()
+  child.cmd("KiroRestart resume-456")
+  eq(child.lua_get("require('kiro').session().state"), "disconnected")
+  eq(child.lua_get("require('kiro').session().session_id"), "resume-456")
+  child.cmd("KiroAsk two")
+  wait_for("not require('kiro').session().busy and require('kiro').session().state == 'ready'")
+  eq(transcript_text():find("old answer", 1, true) ~= nil, true)
 end
 
 T["open buffers are refreshed when a turn finishes (checktime)"] = function()

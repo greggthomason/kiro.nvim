@@ -5,7 +5,8 @@
 ---@field session_id string|nil Resume this session via `session/load` instead of creating a new one
 ---@field log boolean Write a debug log to stdpath("state")/kiro.log
 ---@field checktime boolean Run :checktime when a tool call or turn finishes, so buffers pick up files Kiro edited on disk
----@field ui { width: number, prompt_height: integer }
+---@field notify boolean vim.notify when a turn finishes or fails while the panel is hidden
+---@field ui { width: number, height: number, prompt_height: integer, border: string|string[] }
 ---@field keymaps boolean|table<string,string|false> Opt-in default keymaps
 
 local M = {}
@@ -18,10 +19,14 @@ M.defaults = {
   session_id = nil,
   log = false,
   checktime = true,
+  notify = true, -- vim.notify when a turn finishes (or fails) while the panel is hidden
   ui = {
-    -- <= 1: fraction of the editor width; > 1: absolute number of columns
-    width = 0.4,
-    prompt_height = 8,
+    -- width/height: <= 1 is a fraction of the editor, > 1 is absolute columns/lines.
+    -- They size the whole floating stack (transcript + prompt), borders included.
+    width = 0.6,
+    height = 0.8,
+    prompt_height = 6, -- text lines in the prompt float
+    border = "rounded", -- any 'winborder' style, or "none"
   },
   keymaps = false,
 }
@@ -47,9 +52,12 @@ local function validate(o)
   vim.validate("session_id", o.session_id, "string", true)
   vim.validate("log", o.log, "boolean")
   vim.validate("checktime", o.checktime, "boolean")
+  vim.validate("notify", o.notify, "boolean")
   vim.validate("ui", o.ui, "table")
   vim.validate("ui.width", o.ui.width, "number")
+  vim.validate("ui.height", o.ui.height, "number")
   vim.validate("ui.prompt_height", o.ui.prompt_height, "number")
+  vim.validate("ui.border", o.ui.border, { "string", "table" })
   vim.validate("keymaps", o.keymaps, { "boolean", "table" })
 end
 

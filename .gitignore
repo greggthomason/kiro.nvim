@@ -1,1 +1,3 @@
 .deps/
+.kiro/
+.DS_Store

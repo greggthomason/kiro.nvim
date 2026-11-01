@@ -1,4 +1,5 @@
---- Right-hand chat panel: read-only transcript on top, editable prompt below.
+--- Floating chat panel: read-only transcript on top, editable prompt below.
+--- Hiding only closes the windows; the buffers and the agent session persist.
 local config = require("kiro.config")
 local context = require("kiro.context")
 
@@ -19,15 +20,37 @@ local STATE_LABEL = {
   ready = "ready",
   prompting = "thinking...",
 }
+-- States that show an animated spinner in the winbar.
+local SPIN_STATES = { connecting = true, prompting = true }
+local SPINNER = { "|", "/", "-", "\\" }
+local SPINNER_MS = 120
 
 ---@param session KiroSession
 ---@return KiroPanel
 function Panel.new(session)
   local self = setmetatable({ session = session, render_pending = false }, Panel)
-  session:subscribe(function()
-    self:schedule_render()
+  session:subscribe(function(event, info)
+    if event == "turn_end" then
+      self:notify_turn_end(info)
+    else
+      self:schedule_render()
+    end
   end)
   return self
+end
+
+--- Tell the user a turn finished while the panel is hidden (they can't see it otherwise).
+---@param info? { reason: string, message?: string }
+function Panel:notify_turn_end(info)
+  self:schedule_render()
+  if not config.options.notify or self:is_open() or not info or info.reason == "cancelled" then
+    return
+  end
+  if info.reason == "error" then
+    vim.notify(("kiro.nvim: Kiro hit an error: %s"):format(vim.split(info.message or "", "\n")[1]), vim.log.levels.ERROR)
+  else
+    vim.notify("kiro.nvim: Kiro finished responding (:KiroToggle to view)", vim.log.levels.INFO)
+  end
 end
 
 -- Rendering ------------------------------------------------------------------
@@ -130,8 +153,52 @@ function Panel:render()
 end
 
 function Panel:update_status()
-  if self.twin and vim.api.nvim_win_is_valid(self.twin) then
-    vim.wo[self.twin].winbar = (" Kiro  [%s] "):format(STATE_LABEL[self.session.state] or self.session.state)
+  if not (self.twin and vim.api.nvim_win_is_valid(self.twin)) then
+    return self:stop_spinner()
+  end
+  local state = self.session.state
+  local label = STATE_LABEL[state] or state
+  if SPIN_STATES[state] then
+    local frame = SPINNER[(self.spin_frame or 0) % #SPINNER + 1]
+    vim.wo[self.twin].winbar = (" Kiro  %s [%s] "):format(frame, label)
+    self:start_spinner()
+  else
+    vim.wo[self.twin].winbar = (" Kiro  [%s] "):format(label)
+    self:stop_spinner()
+  end
+end
+
+-- Advance the spinner on a timer while the agent is working. The timer only
+-- re-renders the winbar (cheap); transcript rendering stays event-driven.
+function Panel:start_spinner()
+  if self.spin_timer then
+    return
+  end
+  self.spin_frame = self.spin_frame or 0
+  local timer = vim.uv.new_timer()
+  self.spin_timer = timer
+  timer:start(SPINNER_MS, SPINNER_MS, function()
+    vim.schedule(function()
+      -- A render may have stopped the spinner between ticks.
+      if self.spin_timer ~= timer then
+        return
+      end
+      if not (self.twin and vim.api.nvim_win_is_valid(self.twin)) or not SPIN_STATES[self.session.state] then
+        return self:stop_spinner()
+      end
+      self.spin_frame = (self.spin_frame + 1) % #SPINNER
+      vim.wo[self.twin].winbar =
+        (" Kiro  %s [%s] "):format(SPINNER[self.spin_frame + 1], STATE_LABEL[self.session.state] or self.session.state)
+    end)
+  end)
+end
+
+function Panel:stop_spinner()
+  self.spin_frame = 0
+  if self.spin_timer then
+    self.spin_timer:stop()
+    self.spin_timer:close()
+    self.spin_timer = nil
   end
 end
 
@@ -156,7 +223,7 @@ function Panel:ensure_buffers()
     local function map(lhs, fn, desc)
       vim.keymap.set("n", lhs, fn, { buffer = self.tbuf, nowait = true, silent = true, desc = desc })
     end
-    map("q", function() self:close() end, "Kiro: close panel")
+    map("q", function() self:close() end, "Kiro: hide panel")
     map("i", function() self:focus_prompt() end, "Kiro: focus prompt")
     map("<C-c>", function() require("kiro").cancel() end, "Kiro: cancel")
   end
@@ -193,6 +260,29 @@ function Panel:is_open()
   return self.twin ~= nil and vim.api.nvim_win_is_valid(self.twin)
 end
 
+--- Float geometry: a centered transcript with the prompt float stacked beneath it.
+--- `ui.width`/`ui.height` are the outer size (borders included) of the whole stack.
+---@return table transcript_cfg, table prompt_cfg
+local function layout()
+  local ui = config.options.ui
+  local editor_h = vim.o.lines - vim.o.cmdheight
+  local function dim(v, total)
+    return v <= 1 and math.floor(total * v) or math.floor(v)
+  end
+  local width = math.min(math.max(dim(ui.width, vim.o.columns), 24), vim.o.columns)
+  local height = math.min(math.max(dim(ui.height, editor_h), 10), editor_h)
+  local b = (ui.border == "none" or ui.border == "") and 0 or 1
+  local prompt_h = math.max(math.floor(ui.prompt_height), 1)
+  -- Two stacked windows, each with a top and a bottom border.
+  local transcript_h = math.max(height - prompt_h - 4 * b, 3)
+  local total = transcript_h + prompt_h + 4 * b
+  local row = math.max(math.floor((editor_h - total) / 2), 0)
+  local col = math.max(math.floor((vim.o.columns - width) / 2), 0)
+  local common = { relative = "editor", style = "minimal", border = ui.border, width = width - 2 * b, col = col }
+  return vim.tbl_extend("force", common, { row = row, height = transcript_h }),
+    vim.tbl_extend("force", common, { row = row + transcript_h + 2 * b, height = prompt_h })
+end
+
 ---@param opts? { focus?: "prompt"|"keep" }
 function Panel:open(opts)
   opts = opts or {}
@@ -204,21 +294,13 @@ function Panel:open(opts)
   end
   self:ensure_buffers()
   local origin = vim.api.nvim_get_current_win()
-  local ui = config.options.ui
-  local width = ui.width <= 1 and math.floor(vim.o.columns * ui.width) or math.floor(ui.width)
-  width = math.max(width, 20)
+  local tcfg, pcfg = layout()
 
-  self.twin = vim.api.nvim_open_win(self.tbuf, false, { split = "right", win = -1, width = width })
-  self.pwin = vim.api.nvim_open_win(self.pbuf, false, {
-    split = "below",
-    win = self.twin,
-    height = math.max(math.floor(ui.prompt_height), 1),
-  })
+  self.twin = vim.api.nvim_open_win(self.tbuf, false, tcfg)
+  self.pwin = vim.api.nvim_open_win(self.pbuf, false, pcfg)
   for _, w in ipairs({ self.twin, self.pwin }) do
     style_win(w)
-    vim.wo[w].winfixwidth = true
   end
-  vim.wo[self.pwin].winfixheight = true
   vim.wo[self.pwin].winbar = " Prompt  (<C-s> send, <CR> in normal mode) "
 
   self.augroup = vim.api.nvim_create_augroup("KiroPanel", { clear = true })
@@ -234,6 +316,13 @@ function Panel:open(opts)
     end,
   })
 
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = self.augroup,
+    callback = function()
+      self:reposition()
+    end,
+  })
+
   self:render()
   if opts.focus == "keep" then
     if vim.api.nvim_win_is_valid(origin) then
@@ -244,7 +333,22 @@ function Panel:open(opts)
   end
 end
 
+--- Re-apply float geometry (after the editor was resized).
+function Panel:reposition()
+  if not self:is_open() then
+    return
+  end
+  local tcfg, pcfg = layout()
+  pcall(vim.api.nvim_win_set_config, self.twin, tcfg)
+  if self.pwin and vim.api.nvim_win_is_valid(self.pwin) then
+    pcall(vim.api.nvim_win_set_config, self.pwin, pcfg)
+  end
+end
+
+--- Hide the floats. Buffers, transcript and the agent session are untouched, so
+--- `open()` restores exactly what was there (including an unsent prompt).
 function Panel:close()
+  self:stop_spinner()
   if self.augroup then
     pcall(vim.api.nvim_del_augroup_by_id, self.augroup)
     self.augroup = nil

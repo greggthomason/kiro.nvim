@@ -111,8 +111,21 @@ function M.cancel()
 end
 
 --- Stop the agent process and start over with a fresh session.
-function M.restart()
+--- With `session_id`, the next prompt resumes that session via ACP `session/load`
+--- (its history is replayed into the transcript); without, a new session is created.
+---@param session_id? string
+function M.restart(session_id)
+  if session_id ~= nil and session_id ~= "" then
+    config.options.session_id = session_id
+  end
   M.session():restart()
+end
+
+--- Open the panel and resume an existing session by id (via `session/load`).
+---@param session_id string
+function M.resume(session_id)
+  M.restart(session_id)
+  M.panel():open()
 end
 
 return M

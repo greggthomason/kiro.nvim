@@ -51,15 +51,17 @@ end
 
 -- Events ---------------------------------------------------------------------
 
----@param fn fun(event: "transcript"|"state"|"files")
+---@param fn fun(event: "transcript"|"state"|"files"|"turn_end", info?: table)
 function Session:subscribe(fn)
   self.listeners[#self.listeners + 1] = fn
 end
 
----@param event "transcript"|"state"|"files" "files" = files on disk may have changed
-function Session:_emit(event)
+---@param event "transcript"|"state"|"files"|"turn_end" "files" = files on disk may have changed;
+---  "turn_end" = a prompt turn finished, `info.reason` is "end_turn"|"cancelled"|"stopped"|"error"
+---@param info? table
+function Session:_emit(event, info)
   for _, fn in ipairs(self.listeners) do
-    local ok, err = pcall(fn, event)
+    local ok, err = pcall(fn, event, info)
     if not ok then
       log.error("listener failed:", err)
     end
@@ -163,7 +165,8 @@ end
 ---@param respond fun(result: any, err: table|nil)
 function Session:_on_permission(params, respond)
   local tool = params.toolCall or {}
-  self:_append({ kind = "info", text = "Permission requested: " .. (tool.title or tool.toolCallId or "tool call") })
+  local detail = table.concat(permission.describe(tool), "\n")
+  self:_append({ kind = "info", text = "Permission requested\n" .. detail })
   local handle = permission.request(params, function(result, label, h)
     self.permissions[h] = nil
     self:_append({ kind = "info", text = "Permission: " .. label })
@@ -243,6 +246,9 @@ function Session:connect(cb)
           msg = msg .. ":\n" .. self.stderr_tail
         end
         self:_append({ kind = "error", text = msg })
+        if self.busy then
+          self:_emit("turn_end", { reason = "error", message = "agent exited unexpectedly" })
+        end
       end
       self.stderr_tail = nil
       self:_close_streams()
@@ -304,20 +310,26 @@ function Session:prompt(blocks, display)
       self:_close_streams()
       if perr then
         if not perr.closed then -- closed => the exit handler reports it
-          self:_append({ kind = "error", text = Client.err_message(perr) })
+          local message = Client.err_message(perr)
+          self:_append({ kind = "error", text = message })
           self:_set_state("ready")
+          self:_emit("turn_end", { reason = "error", message = message })
         end
         return
       end
+      local reason = "end_turn"
       if stop_reason == "cancelled" then
+        reason = "cancelled"
         self:_append({ kind = "info", text = "Cancelled" })
       elseif stop_reason and stop_reason ~= "end_turn" then
+        reason = "stopped"
         self:_append({ kind = "info", text = "Stopped: " .. stop_reason })
       else
         self:_emit("transcript")
       end
       self:_set_state("ready")
       self:_emit("files")
+      self:_emit("turn_end", { reason = reason, stop_reason = stop_reason })
     end)
   end)
   return true

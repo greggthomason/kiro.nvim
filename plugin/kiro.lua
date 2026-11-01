@@ -12,9 +12,16 @@ local function kiro()
   return require("kiro")
 end
 
-vim.api.nvim_create_user_command("Kiro", function()
-  kiro().open()
-end, { desc = "Open the Kiro chat panel" })
+vim.api.nvim_create_user_command("Kiro", function(args)
+  if args.args ~= "" then
+    kiro().resume(args.args)
+  else
+    kiro().open()
+  end
+end, {
+  nargs = "?",
+  desc = "Open the Kiro chat panel (with a session id: resume that session)",
+})
 
 vim.api.nvim_create_user_command("KiroToggle", function()
   kiro().toggle()
@@ -40,6 +47,9 @@ vim.api.nvim_create_user_command("KiroCancel", function()
   kiro().cancel()
 end, { desc = "Cancel the current Kiro turn" })
 
-vim.api.nvim_create_user_command("KiroRestart", function()
-  kiro().restart()
-end, { desc = "Restart the Kiro agent with a fresh session" })
+vim.api.nvim_create_user_command("KiroRestart", function(args)
+  kiro().restart(args.args ~= "" and args.args or nil)
+end, {
+  nargs = "?",
+  desc = "Restart the Kiro agent (with a session id: resume that session)",
+})

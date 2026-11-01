@@ -13,7 +13,7 @@ panel inside Neovim.
 
 ```lua
 {
-  "your-user/kiro.nvim", -- or: dir = "~/Developer/neovim-kiro"
+  "your-user/kiro.nvim",
   cmd = { "Kiro", "KiroToggle", "KiroAsk", "KiroSelection", "KiroCancel", "KiroRestart" },
   keys = {
     { "<leader>kk", "<Cmd>KiroToggle<CR>", desc = "Kiro: toggle panel" },
@@ -32,7 +32,7 @@ Create `lua/plugins/kiro.lua` in your user config:
 ```lua
 ---@type LazySpec
 return {
-  "your-user/kiro.nvim", -- or: dir = "~/Developer/neovim-kiro"
+  "your-user/kiro.nvim",
   cmd = { "Kiro", "KiroToggle", "KiroAsk", "KiroSelection", "KiroCancel", "KiroRestart" },
   opts = {},
   specs = {
@@ -70,9 +70,12 @@ require("kiro").setup({
   session_id = nil,            -- resume an existing session (uses ACP session/load)
   log = false,                 -- write protocol traffic to stdpath("state")/kiro.log
   checktime = true,            -- run :checktime after tool calls / turns so buffers reload files Kiro edited
+  notify = true,               -- vim.notify when a turn finishes or fails while the panel is hidden
   ui = {
-    width = 0.4,               -- <= 1: fraction of the editor width, > 1: columns
-    prompt_height = 8,
+    width = 0.6,               -- floating window size; <= 1: fraction of the editor, > 1: columns
+    height = 0.8,              -- <= 1: fraction of the editor, > 1: lines (transcript + prompt, borders included)
+    prompt_height = 6,         -- text lines in the prompt float
+    border = "rounded",        -- any border style accepted by nvim_open_win, or "none"
   },
   keymaps = false,             -- true for defaults, or a table such as { toggle = "<leader>kk", cancel = false }
 })
@@ -85,15 +88,19 @@ Default keymaps (when `keymaps = true`): `<leader>kk` toggle, `<leader>ka` ask, 
 
 | Command                          | Description                                                                      |
 | -------------------------------- | -------------------------------------------------------------------------------- |
-| `:Kiro`                          | Open the panel and focus the prompt                                              |
-| `:KiroToggle`                    | Toggle the panel                                                                 |
+| `:Kiro [session-id]`             | Open the panel and focus the prompt; with a session id, resume that session (`session/load`) |
+| `:KiroToggle`                    | Hide or show the panel (the session keeps running while hidden)                  |
 | `:KiroAsk[!] {text}`             | Send a prompt now; `!` attaches the current file as a resource link              |
 | `:'<,'>KiroSelection [text]`     | With text: send it with the fenced selection. Without: stage the selection in the prompt buffer so you can edit it |
 | `:KiroCancel`                    | Cancel the running turn                                                          |
-| `:KiroRestart`                   | Stop the agent and start a fresh session on the next prompt                      |
+| `:KiroRestart [session-id]`      | Stop the agent and start fresh on the next prompt; with a session id, resume that session instead |
 
 In the panel: `<C-s>` (insert or normal mode) or `<CR>` (normal mode) sends the prompt; in the transcript, `q`
-closes the panel, `i` jumps to the prompt, and `<C-c>` (either buffer, normal mode) cancels.
+hides the panel, `i` jumps to the prompt, and `<C-c>` (either buffer, normal mode) cancels.
+
+The panel is a pair of centered floating windows (transcript above, prompt below). Hiding it (`q`, `:KiroToggle`,
+or closing a float) only closes the windows: the Kiro session keeps running, a turn in progress continues, and
+the transcript and any unsent prompt text are restored when you show it again with `:Kiro` or `:KiroToggle`.
 
 When Kiro asks for permission to run a tool, a `vim.ui.select` menu shows the options the agent offers.
 Dismissing it, or cancelling the turn, answers "cancelled".

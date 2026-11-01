@@ -131,11 +131,28 @@ end
 
 T["permission: selecting an option is relayed to the agent"] = function()
   local orig = vim.ui.select
-  vim.ui.select = function(items, _, cb) cb(items[1]) end
+  local seen_prompt
+  vim.ui.select = function(items, opts, cb)
+    seen_prompt = opts.prompt
+    cb(items[1])
+  end
   local s = new_session()
   s:prompt(text_blocks("perm"), "perm")
   wait_idle(s)
   vim.ui.select = orig
+  -- The picker prompt describes what is being approved.
+  eq(seen_prompt:find("Kiro wants to edit: Write file", 1, true) ~= nil, true)
+  eq(seen_prompt:find("Input: write /tmp/hello.txt", 1, true) ~= nil, true)
+  -- The transcript records the request details and the outcome.
+  local perm_entry
+  for _, e in ipairs(s.transcript) do
+    if e.kind == "info" and (e.text or ""):find("Permission requested", 1, true) then
+      perm_entry = e
+    end
+  end
+  eq(perm_entry ~= nil, true)
+  eq(perm_entry.text:find("Files: /tmp/hello.txt:1", 1, true) ~= nil, true)
+  eq(perm_entry.text:find("  + new line", 1, true) ~= nil, true)
   local texts = vim.tbl_map(function(e) return e.text or "" end, s.transcript)
   eq(vim.tbl_contains(texts, "Permission: Allow once"), true)
   eq(vim.tbl_contains(texts, "permission:allow"), true)
