@@ -13,7 +13,7 @@ panel inside Neovim.
 
 ```lua
 {
-  "your-user/kiro.nvim",
+  "greggthomason/kiro.nvim",
   cmd = { "Kiro", "KiroToggle", "KiroAsk", "KiroSelection", "KiroCancel", "KiroRestart" },
   keys = {
     { "<leader>kk", "<Cmd>KiroToggle<CR>", desc = "Kiro: toggle panel" },
@@ -32,7 +32,7 @@ Create `lua/plugins/kiro.lua` in your user config:
 ```lua
 ---@type LazySpec
 return {
-  "your-user/kiro.nvim",
+  "greggthomason/kiro.nvim",
   cmd = { "Kiro", "KiroToggle", "KiroAsk", "KiroSelection", "KiroCancel", "KiroRestart" },
   opts = {},
   specs = {
