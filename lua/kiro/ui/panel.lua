@@ -235,7 +235,60 @@ function Panel:ensure_buffers()
     map({ "n", "i" }, "<C-s>", function() self:send() end, "Kiro: send prompt")
     map("n", "<CR>", function() self:send() end, "Kiro: send prompt")
     map("n", "<C-c>", function() require("kiro").cancel() end, "Kiro: cancel")
+    self:setup_mention_completion()
   end
+end
+
+--- Text before the cursor that is an in-progress `@mention`, or nil.
+---@param line string
+---@param col integer 0-based cursor byte column
+---@return integer|nil start 0-based column of the "@"
+---@return string|nil base text after the "@"
+function Panel.mention_at(line, col)
+  local before = line:sub(1, col)
+  local s, base = before:match("^.*()@(%S*)$")
+  if not s then
+    return nil
+  end
+  if s > 1 and not before:sub(s - 1, s - 1):match("%s") then
+    return nil -- e.g. an email address
+  end
+  return s - 1, base
+end
+
+--- 'completefunc' for the prompt buffer (<C-x><C-u>).
+function Panel.complete_mention(findstart, base)
+  if findstart == 1 then
+    local start = Panel.mention_at(vim.api.nvim_get_current_line(), vim.api.nvim_win_get_cursor(0)[2])
+    return start and start + 1 or -3
+  end
+  return context.complete_paths(base, config.cwd())
+end
+
+--- `@` completes file paths in the prompt: automatically as you type, and via
+--- 'completefunc' (<C-x><C-u>). Mentioned files are attached on send.
+function Panel:setup_mention_completion()
+  local buf = self.pbuf
+  vim.bo[buf].completeopt = "menuone,noselect"
+  vim.bo[buf].completefunc = "v:lua.require'kiro.ui.panel'.complete_mention"
+
+  vim.api.nvim_create_autocmd("TextChangedI", {
+    buffer = buf,
+    callback = function()
+      if vim.fn.pumvisible() == 1 then
+        return
+      end
+      local col = vim.api.nvim_win_get_cursor(0)[2]
+      local start, base = Panel.mention_at(vim.api.nvim_get_current_line(), col)
+      if not start then
+        return
+      end
+      local items = context.complete_paths(base, config.cwd())
+      if #items > 0 then
+        vim.fn.complete(start + 2, items) -- 1-based column just after the "@"
+      end
+    end,
+  })
 end
 
 ---@param win integer
@@ -409,7 +462,7 @@ function Panel:send()
   if text == "" then
     return
   end
-  if self.session:prompt(context.build_prompt(text), text) then
+  if self.session:prompt(context.build_prompt(text, { cwd = config.cwd() }), text) then
     self:set_prompt("")
   end
 end

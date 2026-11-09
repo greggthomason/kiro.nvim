@@ -51,6 +51,64 @@ T["unnamed buffer has no path"] = function()
   eq(context.current_file(), nil)
 end
 
+-- @file mentions ---------------------------------------------------------------
+
+local function make_tree()
+  local root = vim.uv.fs_realpath(vim.fn.fnamemodify(vim.fn.tempname(), ":h"))
+  root = root .. "/kiro_mentions_" .. vim.uv.hrtime()
+  vim.fn.mkdir(root .. "/src/sub", "p")
+  vim.fn.writefile({ "a" }, root .. "/README.md")
+  vim.fn.writefile({ "b" }, root .. "/src/main.lua")
+  vim.fn.writefile({ "c" }, root .. "/src/other.lua")
+  vim.fn.writefile({ "h" }, root .. "/.hidden")
+  return root
+end
+
+T["extract_mentions resolves existing files only"] = function()
+  local root = make_tree()
+  local got = context.extract_mentions("see @README.md and @src/main.lua, plus @nope.txt and @src/sub", root)
+  eq(got, { root .. "/README.md", root .. "/src/main.lua" })
+  vim.fn.delete(root, "rf")
+end
+
+T["extract_mentions ignores emails, strips punctuation, de-duplicates"] = function()
+  local root = make_tree()
+  local got = context.extract_mentions("mail a@README.md? no. Check (@README.md). @README.md again\n@src/other.lua!", root)
+  eq(got, { root .. "/README.md", root .. "/src/other.lua" })
+  vim.fn.delete(root, "rf")
+end
+
+T["complete_paths lists files and dirs, hides dotfiles, descends into dirs"] = function()
+  local root = make_tree()
+  eq(context.complete_paths("", root), { "README.md", "src/" })
+  eq(context.complete_paths("s", root), { "src/" })
+  eq(context.complete_paths("src/", root), { "src/main.lua", "src/other.lua", "src/sub/" })
+  eq(context.complete_paths("src/m", root), { "src/main.lua" })
+  eq(context.complete_paths(".", root), { ".hidden" })
+  eq(context.complete_paths("missing/", root), {})
+  vim.fn.delete(root, "rf")
+end
+
+T["complete_paths offers open buffers first"] = function()
+  local root = make_tree()
+  vim.cmd("edit " .. vim.fn.fnameescape(root .. "/src/other.lua"))
+  eq(context.complete_paths("", root), { "src/other.lua", "README.md", "src/" })
+  vim.fn.delete(root, "rf")
+end
+
+T["build_prompt links @mentions once when cwd is given"] = function()
+  local root = make_tree()
+  local blocks = context.build_prompt("look at @README.md @README.md", { cwd = root })
+  eq(#blocks, 2)
+  eq(blocks[2].uri, vim.uri_from_fname(root .. "/README.md"))
+  -- an explicitly attached file is not linked twice
+  blocks = context.build_prompt("look at @README.md", { cwd = root, file = root .. "/README.md" })
+  eq(#blocks, 2)
+  -- without cwd, mentions are left as plain text
+  eq(#context.build_prompt("look at @README.md"), 1)
+  vim.fn.delete(root, "rf")
+end
+
 T["format_selection includes path, range and a safe fence"] = function()
   local out = context.format_selection({
     text = "print('```')", path = "/a/b.lua", line1 = 3, line2 = 5, filetype = "lua",

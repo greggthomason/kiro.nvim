@@ -90,6 +90,7 @@ Default keymaps (when `keymaps = true`): `<leader>kk` toggle, `<leader>ka` ask, 
 | -------------------------------- | -------------------------------------------------------------------------------- |
 | `:Kiro [session-id]`             | Open the panel and focus the prompt; with a session id, resume that session (`session/load`) |
 | `:KiroToggle`                    | Hide or show the panel (the session keeps running while hidden)                  |
+| `@path` in the prompt            | Type `@` in the panel prompt to complete file paths (open buffers first). Each existing `@path` (relative to the session cwd) is attached as a resource link when you send. Paths with spaces are not supported |
 | `:KiroAsk[!] {text}`             | Send a prompt now; `!` attaches the current file as a resource link              |
 | `:'<,'>KiroSelection [text]`     | With text: send it with the fenced selection. Without: stage the selection in the prompt buffer so you can edit it |
 | `:KiroCancel`                    | Cancel the running turn                                                          |

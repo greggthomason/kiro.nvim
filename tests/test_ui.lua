@@ -131,6 +131,43 @@ T["panel"]["<CR> in normal mode sends"] = function()
   eq(transcript_text():find("Echo: via enter", 1, true) ~= nil, true)
 end
 
+T["panel"]["mention_at finds an in-progress @mention"] = function()
+  local function at(line, col)
+    return child.lua_get("{ require('kiro.ui.panel').mention_at(...) }", { line, col })
+  end
+  eq(at("look at @src/ma", 15), { 8, "src/ma" })
+  eq(at("@", 1), { 0, "" })
+  eq(at("mail me@example.com", 19), {})
+  eq(at("no mention here", 15), {})
+  eq(at("@done and more", 14), {})
+end
+
+T["panel"]["@ completes via completefunc in the prompt buffer"] = function()
+  child.cmd("Kiro")
+  child.lua("require('kiro').panel():set_prompt('see @READ')")
+  child.lua("vim.api.nvim_win_set_cursor(0, { 1, 9 })")
+  eq(child.lua_get("vim.bo.completefunc"), "v:lua.require'kiro.ui.panel'.complete_mention")
+  eq(child.lua_get("require('kiro.ui.panel').complete_mention(1, '')"), 5)
+  eq(child.lua_get("require('kiro.ui.panel').complete_mention(0, 'READ')"), { "README.md" })
+end
+
+T["panel"]["@mentions in a sent prompt are attached as resource links"] = function()
+  child.cmd("Kiro")
+  child.lua("require('kiro').panel():set_prompt('blocks @README.md')")
+  child.type_keys("<C-s>")
+  wait_for("not require('kiro').session().busy and #require('kiro').session().transcript > 1")
+  local text = transcript_text()
+  eq(text:find("resource_link", 1, true) ~= nil, true)
+  eq(text:find("README.md", 1, true) ~= nil, true)
+end
+
+T["panel"]["typing @ opens the completion popup"] = function()
+  child.cmd("Kiro")
+  child.type_keys("i", "see @READ")
+  eq(child.lua_get("vim.wait(2000, function() return vim.fn.pumvisible() == 1 end, 10)"), true)
+  eq(child.lua_get("vim.fn.complete_info({ 'items' }).items[1].word"), "README.md")
+end
+
 T["panel"]["closing one panel window closes the other"] = function()
   child.cmd("Kiro")
   child.lua("vim.api.nvim_win_close(require('kiro').panel().twin, true)")
