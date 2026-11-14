@@ -62,8 +62,10 @@ local function split(text)
 end
 
 ---@param entries KiroEntry[]
+---@param opts? { show_thoughts?: boolean } thoughts are hidden unless `show_thoughts` is true
 ---@return string[]
-function Panel.format(entries)
+function Panel.format(entries, opts)
+  local show_thoughts = opts and opts.show_thoughts or false
   local lines = {}
   local function add(...)
     for _, l in ipairs({ ... }) do
@@ -72,6 +74,10 @@ function Panel.format(entries)
   end
   local prev
   for _, e in ipairs(entries) do
+    if e.kind == "thought" and not show_thoughts then
+      -- Background reasoning is hidden by default; only what the agent says to the user.
+      goto continue
+    end
     if e.kind == "user" then
       add("## You")
       vim.list_extend(lines, split(e.text))
@@ -118,6 +124,7 @@ function Panel.format(entries)
       add("")
     end
     prev = e
+    ::continue::
   end
   return lines
 end
@@ -135,7 +142,7 @@ end
 
 function Panel:render()
   if self.tbuf and vim.api.nvim_buf_is_valid(self.tbuf) then
-    local lines = Panel.format(self.session.transcript)
+    local lines = Panel.format(self.session.transcript, { show_thoughts = config.options.show_thoughts })
     -- Follow the stream unless the user scrolled up inside the focused transcript.
     local follow = true
     if self.twin and vim.api.nvim_win_is_valid(self.twin) and vim.api.nvim_get_current_win() == self.twin then

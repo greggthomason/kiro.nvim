@@ -199,7 +199,17 @@ T["format"]["renders every entry kind"] = function()
     { kind = "error", text = "bad\nmore" },
     { kind = "info", text = "note" },
   })
-  eq(out, { "## You", "q", "", "## Kiro", "> hmm", "", "a", "b", "", "> **Error:** bad", "> more", "", "> note", "" })
+  -- Thought entries are hidden by default; the heading still comes from the next agent entry.
+  eq(out, { "## You", "q", "", "## Kiro", "a", "b", "", "> **Error:** bad", "> more", "", "> note", "" })
+end
+
+T["format"]["show_thoughts renders thought entries"] = function()
+  local Panel = require("kiro.ui.panel")
+  local out = Panel.format({
+    { kind = "thought", text = "hmm" },
+    { kind = "agent", text = "a" },
+  }, { show_thoughts = true })
+  eq(out, { "## Kiro", "> hmm", "", "a", "" })
 end
 
 T["notify"] = MiniTest.new_set({

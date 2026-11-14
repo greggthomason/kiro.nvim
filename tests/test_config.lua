@@ -23,6 +23,17 @@ T["invalid options are rejected"] = function()
   local config = require("kiro.config")
   MiniTest.expect.error(function() config.setup({ cmd = {} }) end)
   MiniTest.expect.error(function() config.setup({ log = "yes" }) end)
+  MiniTest.expect.error(function() config.setup({ show_thoughts = "yes" }) end)
+  MiniTest.expect.error(function() config.setup({ permission_ui = "popup" }) end)
+  config.setup({})
+end
+
+T["show_thoughts is off by default"] = function()
+  local config = require("kiro.config")
+  config.setup({})
+  eq(config.options.show_thoughts, false)
+  config.setup({ show_thoughts = true })
+  eq(config.options.show_thoughts, true)
   config.setup({})
 end
 

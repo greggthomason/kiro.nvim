@@ -6,6 +6,8 @@
 ---@field log boolean Write a debug log to stdpath("state")/kiro.log
 ---@field checktime boolean Run :checktime when a tool call or turn finishes, so buffers pick up files Kiro edited on disk
 ---@field notify boolean vim.notify when a turn finishes or fails while the panel is hidden
+---@field show_thoughts boolean Show the agent's background reasoning in the transcript (default: false)
+---@field permission_ui "float"|"select" How permission requests are shown: a floating window, or vim.ui.select
 ---@field ui { width: number, height: number, prompt_height: integer, border: string|string[] }
 ---@field keymaps boolean|table<string,string|false> Opt-in default keymaps
 
@@ -20,6 +22,8 @@ M.defaults = {
   log = false,
   checktime = true,
   notify = true, -- vim.notify when a turn finishes (or fails) while the panel is hidden
+  show_thoughts = false, -- show the agent's background reasoning ("thought" chunks) in the transcript
+  permission_ui = "float", -- "float": centered floating window; "select": vim.ui.select
   ui = {
     -- width/height: <= 1 is a fraction of the editor, > 1 is absolute columns/lines.
     -- They size the whole floating stack (transcript + prompt), borders included.
@@ -53,6 +57,10 @@ local function validate(o)
   vim.validate("log", o.log, "boolean")
   vim.validate("checktime", o.checktime, "boolean")
   vim.validate("notify", o.notify, "boolean")
+  vim.validate("show_thoughts", o.show_thoughts, "boolean")
+  vim.validate("permission_ui", o.permission_ui, function(v)
+    return v == "float" or v == "select"
+  end, '"float" or "select"')
   vim.validate("ui", o.ui, "table")
   vim.validate("ui.width", o.ui.width, "number")
   vim.validate("ui.height", o.ui.height, "number")

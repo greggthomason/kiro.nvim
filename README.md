@@ -71,6 +71,8 @@ require("kiro").setup({
   log = false,                 -- write protocol traffic to stdpath("state")/kiro.log
   checktime = true,            -- run :checktime after tool calls / turns so buffers reload files Kiro edited
   notify = true,               -- vim.notify when a turn finishes or fails while the panel is hidden
+  show_thoughts = false,       -- show the agent's background reasoning in the transcript
+  permission_ui = "float",     -- permission prompts: "float" (centered window) or "select" (vim.ui.select)
   ui = {
     width = 0.6,               -- floating window size; <= 1: fraction of the editor, > 1: columns
     height = 0.8,              -- <= 1: fraction of the editor, > 1: lines (transcript + prompt, borders included)
@@ -103,8 +105,10 @@ The panel is a pair of centered floating windows (transcript above, prompt below
 or closing a float) only closes the windows: the Kiro session keeps running, a turn in progress continues, and
 the transcript and any unsent prompt text are restored when you show it again with `:Kiro` or `:KiroToggle`.
 
-When Kiro asks for permission to run a tool, a `vim.ui.select` menu shows the options the agent offers.
-Dismissing it, or cancelling the turn, answers "cancelled".
+When Kiro asks for permission to run a tool, a centered floating window shows what it wants to do (command,
+files, diff) and the options the agent offers. Press the option's number, or move to it and press `<CR>`.
+`q`/`<Esc>`, closing the window, or cancelling the turn answers "cancelled". Set `permission_ui = "select"` to
+use `vim.ui.select` instead.
 
 `:checkhealth kiro` verifies the Neovim version and that the agent command is available.
 

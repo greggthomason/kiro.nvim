@@ -68,4 +68,13 @@ T["describe tolerates an empty tool call"] = function()
   eq(lines[1], "Kiro wants to: a tool call")
 end
 
+T["float_lines numbers options after the details"] = function()
+  local lines, first = permission.float_lines(
+    { "Kiro wants to run: ls", "Input: a\nb" },
+    { { name = "Allow once" }, { optionId = "deny" } }
+  )
+  eq(lines, { "Kiro wants to run: ls", "Input: a", "b", "", " [1] Allow once", " [2] deny" })
+  eq(first, 5)
+end
+
 return T

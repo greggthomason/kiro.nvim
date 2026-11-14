@@ -131,6 +131,7 @@ end
 
 T["permission: selecting an option is relayed to the agent"] = function()
   local orig = vim.ui.select
+  require("kiro.config").setup({ permission_ui = "select" })
   local seen_prompt
   vim.ui.select = function(items, opts, cb)
     seen_prompt = opts.prompt
@@ -140,6 +141,7 @@ T["permission: selecting an option is relayed to the agent"] = function()
   s:prompt(text_blocks("perm"), "perm")
   wait_idle(s)
   vim.ui.select = orig
+  require("kiro.config").setup({})
   -- The picker prompt describes what is being approved.
   eq(seen_prompt:find("Kiro wants to edit: Write file", 1, true) ~= nil, true)
   eq(seen_prompt:find("Input: write /tmp/hello.txt", 1, true) ~= nil, true)
@@ -161,17 +163,20 @@ end
 
 T["permission: dismissing the menu cancels the request"] = function()
   local orig = vim.ui.select
+  require("kiro.config").setup({ permission_ui = "select" })
   vim.ui.select = function(_, _, cb) cb(nil) end
   local s = new_session()
   s:prompt(text_blocks("perm"), "perm")
   wait_idle(s)
   vim.ui.select = orig
+  require("kiro.config").setup({})
   eq(s.transcript[#s.transcript], { kind = "info", text = "Cancelled" })
   s:close()
 end
 
 T["permission: cancelling the turn resolves a pending menu"] = function()
   local orig = vim.ui.select
+  require("kiro.config").setup({ permission_ui = "select" })
   local late_cb
   vim.ui.select = function(_, _, cb) late_cb = cb end
   local s = new_session()
@@ -182,7 +187,82 @@ T["permission: cancelling the turn resolves a pending menu"] = function()
   eq(s.transcript[#s.transcript], { kind = "info", text = "Cancelled" })
   late_cb({ optionId = "allow", name = "Allow once" }) -- a late choice must be ignored
   vim.ui.select = orig
+  require("kiro.config").setup({})
   eq(s.state, "ready")
+  s:close()
+end
+
+--- The permission float, if one is open (floating window showing a non-panel buffer).
+local function perm_float()
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(w).relative ~= "" then
+      return w
+    end
+  end
+end
+
+local function press(win, keys)
+  vim.api.nvim_set_current_win(win)
+  vim.api.nvim_feedkeys(vim.keycode(keys), "x", false)
+end
+
+T["permission float: pressing a number relays that option"] = function()
+  local s = new_session()
+  s:prompt(text_blocks("perm"), "perm")
+  H.wait(perm_float)
+  local win = perm_float()
+  local text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false), "\n")
+  eq(text:find("Kiro wants to edit: Write file", 1, true) ~= nil, true)
+  eq(text:find("[1] Allow once", 1, true) ~= nil, true)
+  press(win, "1")
+  wait_idle(s)
+  eq(perm_float(), nil)
+  local texts = vim.tbl_map(function(e) return e.text or "" end, s.transcript)
+  eq(vim.tbl_contains(texts, "Permission: Allow once"), true)
+  eq(vim.tbl_contains(texts, "permission:allow"), true)
+  s:close()
+end
+
+T["permission float: <CR> selects the option under the cursor"] = function()
+  local s = new_session()
+  s:prompt(text_blocks("perm"), "perm")
+  H.wait(perm_float)
+  press(perm_float(), "<CR>") -- cursor starts on the first option
+  wait_idle(s)
+  local texts = vim.tbl_map(function(e) return e.text or "" end, s.transcript)
+  eq(vim.tbl_contains(texts, "permission:allow"), true)
+  s:close()
+end
+
+T["permission float: q dismisses and cancels the request"] = function()
+  local s = new_session()
+  s:prompt(text_blocks("perm"), "perm")
+  H.wait(perm_float)
+  press(perm_float(), "q")
+  wait_idle(s)
+  eq(perm_float(), nil)
+  eq(s.transcript[#s.transcript], { kind = "info", text = "Cancelled" })
+  s:close()
+end
+
+T["permission float: closing the window externally cancels"] = function()
+  local s = new_session()
+  s:prompt(text_blocks("perm"), "perm")
+  H.wait(perm_float)
+  vim.api.nvim_win_close(perm_float(), true)
+  wait_idle(s)
+  eq(s.transcript[#s.transcript], { kind = "info", text = "Cancelled" })
+  s:close()
+end
+
+T["permission float: cancelling the turn closes the float"] = function()
+  local s = new_session()
+  s:prompt(text_blocks("perm"), "perm")
+  H.wait(perm_float)
+  eq(s:cancel(), true)
+  wait_idle(s)
+  eq(perm_float(), nil)
+  eq(s.transcript[#s.transcript], { kind = "info", text = "Cancelled" })
   s:close()
 end
 
